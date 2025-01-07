@@ -18,6 +18,8 @@ class MovieViewModel(
     private val _genres = MutableStateFlow<List<Genre>>(emptyList())
     val genres: StateFlow<List<Genre>> = _genres.asStateFlow()
 
+    private val _searchQuery = MutableStateFlow<String?>(null)
+
     init {
         viewModelScope.launch {
             _genres.value = repository.fetchGenres()
@@ -25,13 +27,19 @@ class MovieViewModel(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val movies: Flow<PagingData<Movie>> = _selectedGenre
-        .flatMapLatest { genreId ->
-            repository.getMoviesStream(genreId)
-        }
-        .cachedIn(viewModelScope)
+    val movies: Flow<PagingData<Movie>> = combine(_selectedGenre, _searchQuery) { genre, query ->
+        Pair(genre, query)
+    }
+    .distinctUntilChanged()
+    .flatMapLatest { (genre, query) ->
+        repository.getMoviesStream(genre, query)
+    }
+    .cachedIn(viewModelScope)
 
     fun selectGenre(genreId: Int?) {
         _selectedGenre.value = genreId
+    }
+    fun setSearchQuery(query: String?) {
+        _searchQuery.value = query
     }
 }

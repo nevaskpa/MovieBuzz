@@ -12,7 +12,8 @@ import android.util.Log
 
 class MoviePagingSource(
     private val apiKey: String,
-    private val genreId: Int? = null // Optional genre filter
+    private val genreId: Int? = null,
+    private val query: String? = null
 ) : PagingSource<Int, Movie>() {
 
     private val client = OkHttpClient()
@@ -20,9 +21,13 @@ class MoviePagingSource(
 
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Movie> {
         val page = params.key ?: 1
-        val genreQuery = genreId?.let { "&with_genres=$it" } ?: ""
 
-        val url = "https://api.themoviedb.org/3/discover/movie?api_key=$apiKey&page=$page$genreQuery"
+        val url = if (!query.isNullOrEmpty()) {
+            "https://api.themoviedb.org/3/search/movie?api_key=$apiKey&query=${query}&page=$page"
+        } else {
+            val genreQuery = genreId?.let { "&with_genres=$it" } ?: ""
+            "https://api.themoviedb.org/3/discover/movie?api_key=$apiKey&page=$page$genreQuery"
+        }
 
         val request = Request.Builder()
             .url(url)
@@ -30,12 +35,9 @@ class MoviePagingSource(
             .build()
 
         return try {
-            // Perform network call on IO dispatcher
             val response = withContext(Dispatchers.IO) {
                 client.newCall(request).execute()
             }
-
-            Log.d(tag, "Response Code: ${response.code}")
 
             if (!response.isSuccessful) {
                 Log.e(tag, "Unsuccessful network call: ${response.code}")
@@ -43,7 +45,6 @@ class MoviePagingSource(
             }
 
             val bodyString = response.body?.string().orEmpty()
-            Log.d(tag, "Response Body: $bodyString")
 
             val json = JSONObject(bodyString)
             val resultsArray = json.optJSONArray("results") ?: return LoadResult.Error(IOException("Invalid response"))
@@ -52,7 +53,6 @@ class MoviePagingSource(
             for (i in 0 until resultsArray.length()) {
                 val item = resultsArray.getJSONObject(i)
 
-                // Parse each field safely
                 val id = item.optInt("id", 0)
                 val title = item.optString("title", "")
                 val releaseDate = item.optString("release_date", "")
@@ -94,11 +94,16 @@ class MoviePagingSource(
                 movieList.add(movie)
             }
 
+            val filteredList = if (genreId != null) {
+                movieList.filter { it.genreIds.contains(genreId) }
+            } else {
+                movieList
+            }
             val totalPages = json.optInt("total_pages", 1)
             val nextKey = if (page < totalPages) page + 1 else null
 
             LoadResult.Page(
-                data = movieList,
+                data = filteredList,
                 prevKey = if (page == 1) null else page - 1,
                 nextKey = nextKey
             )

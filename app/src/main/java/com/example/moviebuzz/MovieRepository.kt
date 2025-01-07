@@ -16,10 +16,10 @@ class MovieRepository(
 ) {
     private val client = OkHttpClient()
 
-    fun getMoviesStream(genreId: Int? = null): Flow<PagingData<Movie>> {
+    fun getMoviesStream(genreId: Int? = null, query: String? = null): Flow<PagingData<Movie>> {
         return Pager(
             config = PagingConfig(pageSize = 20, enablePlaceholders = false),
-            pagingSourceFactory = { MoviePagingSource(apiKey, genreId) }
+            pagingSourceFactory = { MoviePagingSource(apiKey, genreId, query) }
         ).flow
     }
 
